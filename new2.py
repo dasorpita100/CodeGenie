@@ -14,6 +14,8 @@ from services.ollama_service import generate_with_ollama
 
 ADMIN_EMAIL = "admin@gmail.com"
 HF_API_KEY = os.getenv("HF_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 if not HF_API_KEY:
     print("⚠️ WARNING: HF_API_KEY not set. HuggingFace will fail.")
 
@@ -113,49 +115,96 @@ Rules:
 - Do NOT include variable names
 """
 
-    API_URL = "https://router.huggingface.co/hf-inference/models/google/flan-t5-base"
-
-    headers = {}
-    if HF_API_KEY:
-        headers["Authorization"] = f"Bearer {HF_API_KEY}"
-
-    payload = {
-        "inputs": full_prompt,
-        "parameters": {
-            "max_new_tokens": 700,
-            "temperature": 0.3
-        }
-    }
-
     output = ""
-    if not HF_API_KEY:
-        print("⚠️ Skipping HuggingFace → using Ollama directly")
-        output = generate_code_ollama(prompt, language)
-    
-    else:
-        for i in range(5):
-            response = requests.post(API_URL, headers=headers, json=payload)
 
-            print("STATUS:", response.status_code)
-            print("RAW:", response.text)
-
-            if response.status_code == 200:
-                result = response.json()
-
-                if isinstance(result, list):
-                    output = result[0].get("generated_text", "")
-                else:
-                    output = result.get("generated_text", "")
-
-                break   # ✅ ALWAYS break when success
+    # 1. Try Gemini
+    if GEMINI_API_KEY and not output:
+        try:
+            print("🚀 Trying Gemini API...")
+            gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
+            payload = {
+                "contents": [{"parts": [{"text": full_prompt}]}],
+                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 8192}
+            }
+            resp = requests.post(gemini_url, json=payload, timeout=15)
+            if resp.status_code == 200:
+                data = resp.json()
+                if "candidates" in data and len(data["candidates"]) > 0:
+                    output = data["candidates"][0]["content"]["parts"][0]["text"]
             else:
+                print("Gemini failed:", resp.text)
+        except Exception as e:
+            print("Gemini exception:", e)
+
+    # 2. Try Groq
+    if GROQ_API_KEY and not output:
+        try:
+            print("🚀 Trying Groq API...")
+            groq_url = "https://api.groq.com/openai/v1/chat/completions"
+            headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
+            payload = {
+                "model": "qwen/qwen3.8-27b",
+                "messages": [{"role": "user", "content": full_prompt}],
+                "temperature": 0.3,
+                "max_tokens": 8192
+            }
+            resp = requests.post(groq_url, headers=headers, json=payload, timeout=15)
+            if resp.status_code == 200:
+                data = resp.json()
+                if "choices" in data and len(data["choices"]) > 0:
+                    output = data["choices"][0]["message"]["content"]
+            else:
+                print("Groq failed:", resp.text)
+        except Exception as e:
+            print("Groq exception:", e)
+
+    # 3. Try Hugging Face
+    if not output:
+        print("🚀 Trying Hugging Face API...")
+        hf_url = "https://api-inference.huggingface.co/models/Qwen/Qwen2.5-Coder-32B-Instruct"
+        headers = {}
+        if HF_API_KEY:
+            headers["Authorization"] = f"Bearer {HF_API_KEY}"
+        else:
+            print("⚠️ WARNING: HF_API_KEY is not set! Using HuggingFace without token might face strict rate limits.")
+        
+        payload = {
+            "inputs": full_prompt,
+            "parameters": {
+                "max_new_tokens": 700,
+                "temperature": 0.3,
+                "return_full_text": False
+            }
+        }
+
+        for i in range(3):
+            try:
+                resp = requests.post(hf_url, headers=headers, json=payload, timeout=20)
+                if resp.status_code == 200:
+                    result = resp.json()
+                    if isinstance(result, list):
+                        output = result[0].get("generated_text", "")
+                    else:
+                        output = result.get("generated_text", "")
+                    break
+                else:
+                    print("HF RAW:", resp.text)
+                    time.sleep(3)
+            except Exception as e:
+                print("HF exception:", e)
                 time.sleep(3)
 
-        if output.strip() == "" or "loading" in output.lower() or "error" in output.lower():
-            print("⚠️ HuggingFace failed → switching to Ollama...")
-
-            output = generate_code_ollama(prompt, language)
-
+    if output.strip() == "" or "error" in output.lower()[:50]:
+        output = """CODE:
+        # Error: All APIs failed. 
+        # Please check your API keys or try again later.
+        
+        EXPLANATION:
+        Gemini, Groq, and Hugging Face models failed to generate a response.
+        
+        KEYWORDS:
+        error
+        """
 
     print("\n========= MODEL OUTPUT =========\n")
     print("FINAL OUTPUT:\n", output)
@@ -381,28 +430,11 @@ def user_dashboard():
 @app.route('/generate', methods=['POST'])
 @login_required
 def generate():
-
     data = request.get_json()
-
     prompt = data["prompt"]
     language = data["language"]
 
-    full_prompt = f"""
-You are a senior software engineer.
-
-Generate code in {language}.
-
-User request:
-{prompt}
-
-Return only the complete code.
-"""
-
-    result = generate_with_ollama(full_prompt)
-
-    code = result
-    explanation = "Code generated using Ollama."
-    keywords = []
+    code, explanation, keywords = generate_code_locally(prompt, language)
 
     # Save activity
     activity = Activity(
@@ -410,7 +442,6 @@ Return only the complete code.
         language=language,
         prompt=prompt
     )
-
     db.session.add(activity)
 
     # Save history
@@ -421,7 +452,6 @@ Return only the complete code.
         code=code,
         created_at=datetime.now()
     )
-
     db.session.add(history)
     db.session.commit()
 
@@ -431,39 +461,6 @@ Return only the complete code.
         "keywords": keywords,
         "status": "success"
     })
-
-    # data = request.get_json()
-    # prompt = data["prompt"]
-    # language = data["language"]
-
-    # code, explanation, keywords = generate_code_locally(prompt, language)
-
-    # # Save activity (already exists)
-    # activity = Activity(
-    #     user_id=current_user.id,
-    #     language=language,
-    #     prompt=prompt
-    # )
-    # db.session.add(activity)
-
-    # # ✅ NEW: Save history properly using SQLAlchemy
-    # history = History(
-    #     user_id=current_user.id,
-    #     prompt=prompt,
-    #     language=language,
-    #     code=code,
-    #     created_at=datetime.now()
-    # )
-    # db.session.add(history)
-
-    # db.session.commit()
-
-    # return jsonify({
-    #     "code": code,
-    #     "explanation": explanation,
-    #     "keywords": keywords,
-    #     "status": "success"
-    # })
 
 @app.route('/submit_feedback', methods=['POST'])
 @login_required
