@@ -9,6 +9,9 @@ import keyword
 import requests
 import time
 import os
+from services.ollama_service import generate_with_ollama
+
+
 ADMIN_EMAIL = "admin@gmail.com"
 HF_API_KEY = os.getenv("HF_API_KEY")
 if not HF_API_KEY:
@@ -41,45 +44,6 @@ def extract_keywords_from_code(code, language):
 
 
 import subprocess
-# def generate_code_ollama(prompt, language):
-
-#     full_prompt = f"""
-# You are a senior software engineer.
-
-# Generate a COMPLETE {language} program for:
-
-# {prompt}
-
-# CODE:
-# <only code>
-
-# EXPLANATION:
-# <simple explanation>
-
-# KEYWORDS:
-# <keywords>
-# """
-
-#     result = subprocess.run(
-#         ["ollama", "run", "codellama"],
-#         input=full_prompt,
-#         text=True,
-#         capture_output=True,
-#         timeout=120
-#     )
-
-#     if result.returncode != 0:
-#         return """CODE:
-#     Error
-
-#     EXPLANATION:
-#     Ollama failed to generate code
-
-#     KEYWORDS:
-#     """
-
-#     return result.stdout
-
 def generate_code_ollama(prompt, language):
 
     full_prompt = f"""
@@ -99,64 +63,25 @@ KEYWORDS:
 <keywords>
 """
 
-    try:
-        result = subprocess.run(
-            ["ollama", "run", "codellama:7b"],
-            input=full_prompt,
-            text=True,
-            capture_output=True,
-            timeout=120
-        )
+    result = subprocess.run(
+        ["ollama", "run", "deepseek-coder"],
+        input=full_prompt,
+        text=True,
+        capture_output=True,
+        timeout=20
+    )
 
-        if result.returncode != 0:
-            return "ERROR: Ollama failed"
-
-        return result.stdout
-
-    except subprocess.TimeoutExpired:
+    if result.returncode != 0:
         return """CODE:
-print("Server busy, try again")
+    Error
 
-EXPLANATION:
-The model took too long to respond.
+    EXPLANATION:
+    Ollama failed to generate code
 
-KEYWORDS:
-print
-"""
+    KEYWORDS:
+    """
 
-# import requests
-
-# def generate_code_ollama(prompt, language):
-
-#     full_prompt = f"""
-# Generate a COMPLETE {language} program:
-
-# {prompt}
-
-# Return strictly:
-# CODE:
-# EXPLANATION:
-# KEYWORDS:
-# """
-
-#     try:
-#         response = requests.post(
-#             "http://localhost:11434/api/generate",
-#             json={
-#                 "model": "codellama:7b",
-#                 "prompt": full_prompt,
-#                 "stream": False
-#             },
-#             timeout=60
-#         )
-
-#         data = response.json()
-#         return data.get("response", "")
-
-#     except Exception as e:
-#         return f"ERROR: {str(e)}"
-
-
+    return result.stdout
 
 def generate_code_locally(prompt, language):
 
@@ -188,7 +113,7 @@ Rules:
 - Do NOT include variable names
 """
 
-    API_URL = "https://router.huggingface.co/hf-inference/models/bigcode/starcoder"
+    API_URL = "https://router.huggingface.co/hf-inference/models/google/flan-t5-base"
 
     headers = {}
     if HF_API_KEY:
@@ -311,6 +236,7 @@ with app.app_context():
     db.create_all()
     print("✅ Database initialized on Render")
 
+print("HF KEY:", HF_API_KEY)
 
 # -------------------------
 # User Model
@@ -349,7 +275,7 @@ class History(db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return db.session.get(User, int(user_id))
+    return User.query.get(int(user_id))
 
 
 # -------------------------
@@ -369,9 +295,9 @@ def login():
     user = User.query.filter_by(email=email).first()
 
     if user and bcrypt.check_password_hash(user.password, password):
+
         login_user(user)
 
-        # ✅ ROLE-BASED REDIRECT
         if user.role == "admin":
             return redirect('/admin')
         else:
@@ -457,20 +383,37 @@ def user_dashboard():
 def generate():
 
     data = request.get_json()
+
     prompt = data["prompt"]
     language = data["language"]
 
-    code, explanation, keywords = generate_code_locally(prompt, language)
+    full_prompt = f"""
+You are a senior software engineer.
 
-    # Save activity (already exists)
+Generate code in {language}.
+
+User request:
+{prompt}
+
+Return only the complete code.
+"""
+
+    result = generate_with_ollama(full_prompt)
+
+    code = result
+    explanation = "Code generated using Ollama."
+    keywords = []
+
+    # Save activity
     activity = Activity(
         user_id=current_user.id,
         language=language,
         prompt=prompt
     )
+
     db.session.add(activity)
 
-    # ✅ NEW: Save history properly using SQLAlchemy
+    # Save history
     history = History(
         user_id=current_user.id,
         prompt=prompt,
@@ -478,8 +421,8 @@ def generate():
         code=code,
         created_at=datetime.now()
     )
-    db.session.add(history)
 
+    db.session.add(history)
     db.session.commit()
 
     return jsonify({
@@ -488,6 +431,39 @@ def generate():
         "keywords": keywords,
         "status": "success"
     })
+
+    # data = request.get_json()
+    # prompt = data["prompt"]
+    # language = data["language"]
+
+    # code, explanation, keywords = generate_code_locally(prompt, language)
+
+    # # Save activity (already exists)
+    # activity = Activity(
+    #     user_id=current_user.id,
+    #     language=language,
+    #     prompt=prompt
+    # )
+    # db.session.add(activity)
+
+    # # ✅ NEW: Save history properly using SQLAlchemy
+    # history = History(
+    #     user_id=current_user.id,
+    #     prompt=prompt,
+    #     language=language,
+    #     code=code,
+    #     created_at=datetime.now()
+    # )
+    # db.session.add(history)
+
+    # db.session.commit()
+
+    # return jsonify({
+    #     "code": code,
+    #     "explanation": explanation,
+    #     "keywords": keywords,
+    #     "status": "success"
+    # })
 
 @app.route('/submit_feedback', methods=['POST'])
 @login_required

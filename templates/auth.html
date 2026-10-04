@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Code Genie</title>
+    <title>CodeGenie</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 
     <style>
@@ -15,76 +15,88 @@
         body {
             height: 100vh;
             display: flex;
+            position: relative;
+            background: 
+                linear-gradient(rgba(10,20,40,0.55), rgba(10,20,40,0.65)),
+                url("{{ url_for('static', filename='template_background.png') }}");
+
+            background-size: cover;
+            background-position: center;
         }
 
         /* LEFT SIDE */
         .left {
             flex: 1;
-            background: #f5f7fa;
             display: flex;
-            justify-content: center;
             align-items: center;
-            padding: 60px;
+            padding-left: 200px;
         }
 
         .left-content {
-            max-width: 420px;
-            width: 100%;
+            width: 420px;
+            animation: fadeUp 0.8s ease;
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(20px);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
         }
 
         .left h1 {
-            font-size: 32px;
+            font-size: 40px;
+            color: white;
             margin-bottom: 10px;
-            font-weight: 700;
         }
 
         .left p {
-            color: #666;
+            color: rgba(255,255,255,0.7);
             margin-bottom: 35px;
         }
 
         label {
-            font-size: 14px;
-            font-weight: 600;
+            color: rgba(255,255,255,0.8);
+            font-size: 13px;
         }
 
         input {
             width: 100%;
-            padding: 12px;
-            margin: 8px 0 20px 0;
-            border: none;
-            border-bottom: 2px solid #ddd;
-            outline: none;
-            font-size: 14px;
-            transition: border 0.3s;
+            padding: 16px;
+            margin: 10px 0 22px 0;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.06);
+            color: white;
+
+            transition: all 0.3s ease;
         }
 
         input:focus {
-            border-bottom: 2px solid #4f8dfd;
+            border: 1px solid #4f8dfd;
+            box-shadow: 0 0 15px rgba(79,141,253,0.5);
         }
 
-        .row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 13px;
-            margin-bottom: 20px;
+        input::placeholder {
+            color: rgba(255,255,255,0.5);
         }
 
         .btn {
             width: 100%;
-            padding: 14px;
-            background: #111;
-            color: white;
+            padding: 16px;
+            border-radius: 12px;
             border: none;
-            border-radius: 30px;
-            cursor: pointer;
+
+            background: linear-gradient(135deg, #4f8dfd, #38c172);
+            color: white;
             font-weight: 600;
-            transition: 0.3s;
+            letter-spacing: 0.5px;
+
+            cursor: pointer;
+            transition: all 0.3s ease;
         }
 
         .btn:hover {
-            background: #333;
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 10px 30px rgba(79,141,253,0.6);
         }
 
         .secondary-btn {
@@ -97,37 +109,49 @@
             cursor: pointer;
         }
 
+        .row {
+            display: flex;
+            justify-content: flex-end;
+            font-size: 13px;
+            margin-bottom: 20px;
+            color: rgba(255,255,255,0.6);
+        }
+
         .toggle {
-            margin-top: 25px;
-            font-size: 14px;
+            margin-top: 20px;
+            color: rgba(255,255,255,0.7);
         }
 
         .toggle a {
-            font-weight: 600;
-            cursor: pointer;
             color: #4f8dfd;
         }
 
         /* RIGHT SIDE */
         .right {
-            flex: 1;
-            background: linear-gradient(135deg, #4f8dfd, #38c172);
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            position: absolute;
+            right: 300px;
+            top: 45%;
+            transform: translateY(-50%);
+            
             color: white;
-            padding: 60px;
+            max-width: 500px;
+            z-index: 3;
+
+            /*background: rgba(14, 20, 30, 0.6);  
+            padding: 25px;
+            border-radius: 12px;*/
         }
 
         .right h2 {
-            font-size: 34px;
+            font-size: 46px;
+            font-weight: 700;
             margin-bottom: 15px;
         }
 
         .right p {
-            max-width: 400px;
-            line-height: 1.6;
-            opacity: 0.9;
+            font-size: 16px;
+            line-height: 2;
+            opacity: 1;
         }
 
         .hidden {
@@ -147,12 +171,33 @@
             background: #2ecc71;
         }
 
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 40px;
+            color: white;
+            font-weight: 600;
+        }
+
+        .logo img {
+            width: 40px;
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
         @media(max-width: 900px) {
             body {
                 flex-direction: column;
-            }
-            .right {
-                display: none;
             }
         }
     </style>
@@ -163,6 +208,11 @@
 <!-- LEFT -->
 <div class="left">
     <div class="left-content">
+
+        <div class="logo">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="logo">
+            <span>CodeGenie</span>
+        </div>
 
         <h1>Welcome back</h1>
         <p>Please enter your details</p>
@@ -215,13 +265,17 @@
 
     </div>
 </div>
+<!-- LEFT END -->
 
 <!-- RIGHT -->
-<div class="right">
-    <div>
-        <h2>Code Genie</h2>
-        <p>AI-powered code explanation and generation platform designed to enhance developer productivity and learning experience.</p>
-    </div>
+ <div class="right">
+    <h2>CodeGenie</h2>
+    <p><b>
+        AI-powered code explanation and generation platform designed to enhance 
+        developer productivity and learning experience. Delivers real-time insights, debugging support, and optimized code suggestions across multiple programming languages.
+Empowers learners and developers with interactive explanations and smart automation to accelerate coding mastery.
+        </b>
+    </p>
 </div>
 
 <script>
